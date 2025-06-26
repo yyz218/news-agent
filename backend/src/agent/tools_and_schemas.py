@@ -1,6 +1,7 @@
-from typing import List
+from typing import List, Dict, Any
 from pydantic import BaseModel, Field
-
+import datetime, os, requests
+from newsapi import NewsApiClient
 
 class SearchQueryList(BaseModel):
     query: List[str] = Field(
@@ -21,3 +22,46 @@ class Reflection(BaseModel):
     follow_up_queries: List[str] = Field(
         description="A list of follow-up queries to address the knowledge gap."
     )
+
+class NewsSearchInput(BaseModel):
+    query: str = Field(..., description="News search keywords")
+    from_date: str | None = Field(
+        default=None, description="start date YYYY-MM-DD"
+    )
+    to_date: str | None = Field(
+        default=None, description="end date YYYY-MM-DD"
+    )
+    language: str = Field(default="en", description="ISO 639-1")
+
+def news_search(params: NewsSearchInput) -> List[Dict[str, Any]]:
+    api_key = os.getenv("NEWS_API_KEY")
+    if not api_key:
+        raise RuntimeError("NEWS_API_KEY is not set in environment variables")
+
+    client = NewsApiClient(api_key=api_key)
+
+    today = datetime.date.today()
+    frm = params.from_date or str(today - datetime.timedelta(days=7))
+    to_  = params.to_date or str(today)
+
+    resp = client.get_everything(
+        q=params.query,
+        from_param=frm,
+        to=to_,
+        language=params.language,
+        sort_by="relevancy",
+        page_size=10,
+    )
+
+    articles = resp.get("articles", []) or []
+    results: List[Dict[str, Any]] = []
+    for art in articles:
+        results.append(
+            {
+                "title":        art.get("title", ""),
+                "snippet":      art.get("description") or (art.get("content") or "")[:160],
+                "url":          art.get("url", ""),
+                "published_at": (art.get("publishedAt") or "")[:10],
+            }
+        )
+    return results

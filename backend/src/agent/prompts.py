@@ -6,7 +6,7 @@ def get_current_date():
     return datetime.now().strftime("%B %d, %Y")
 
 
-query_writer_instructions = """Your goal is to generate sophisticated and diverse web search queries. These queries are intended for an advanced automated web research tool capable of analyzing complex results, following links, and synthesizing information.
+query_writer_instructions = """Your goal is to generate news focused search queries. These queries are intended for an advanced automated web research tool capable of getting news and analyze the correctness of news.
 
 Instructions:
 - Always prefer a single search query, only add another query if the original question requests multiple aspects or elements and one query is not enough.
@@ -17,7 +17,7 @@ Instructions:
 - Query should ensure that the most current information is gathered. The current date is {current_date}.
 
 Format: 
-- Format your response as a JSON object with ALL two of these exact keys:
+- Format your response as a JSON object with ALL three of these exact keys:
    - "rationale": Brief explanation of why these queries are relevant
    - "query": A list of search queries
 
@@ -34,7 +34,7 @@ Topic: What revenue grew more last year apple stock or the number of people buyi
 Context: {research_topic}"""
 
 
-web_searcher_instructions = """Conduct targeted Google Searches to gather the most recent, credible information on "{research_topic}" and synthesize it into a verifiable text artifact.
+web_searcher_instructions = """Conduct targeted news search to gather the most recent, credible information on "{research_topic}" and synthesize it into a verifiable text artifact.
 
 Instructions:
 - Query should ensure that the most current information is gathered. The current date is {current_date}.
@@ -47,16 +47,16 @@ Research Topic:
 {research_topic}
 """
 
-reflection_instructions = """You are an expert research assistant analyzing summaries about "{research_topic}".
+reflection_instructions = """You are an expert news research assistant analyzing summaries about "{research_topic}".
 
 Instructions:
 - Identify knowledge gaps or areas that need deeper exploration and generate a follow-up query. (1 or multiple).
 - If provided summaries are sufficient to answer the user's question, don't generate a follow-up query.
 - If there is a knowledge gap, generate a follow-up query that would help expand your understanding.
-- Focus on technical details, implementation specifics, or emerging trends that weren't fully covered.
+- Focus on news details and correctness.
 
 Requirements:
-- Ensure the follow-up query is self-contained and includes necessary context for web search.
+- Ensure the follow-up query is self-contained and includes necessary context for news search.
 
 Output Format:
 - Format your response as a JSON object with these exact keys:
@@ -86,8 +86,9 @@ Instructions:
 - You are the final step of a multi-step research process, don't mention that you are the final step. 
 - You have access to all the information gathered from the previous steps.
 - You have access to the user's question.
+- If you provide an image_url or video_url, please include the Markdown image or link at the bottom of your answer
 - Generate a high-quality answer to the user's question based on the provided summaries and the user's question.
-- Include the sources you used from the Summaries in the answer correctly, use markdown format (e.g. [apnews](https://vertexaisearch.cloud.google.com/id/1-0)). THIS IS A MUST.
+- you MUST include all the citations from the summaries in the answer correctly.
 
 User Context:
 - {research_topic}

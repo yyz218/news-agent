@@ -1,6 +1,6 @@
 import os
 
-from agent.tools_and_schemas import SearchQueryList, Reflection
+from agent.tools_and_schemas import SearchQueryList, Reflection, NewsSearchInput, news_search
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage
 from langgraph.types import Send
@@ -35,6 +35,9 @@ load_dotenv()
 
 if os.getenv("GEMINI_API_KEY") is None:
     raise ValueError("GEMINI_API_KEY is not set")
+
+if os.getenv("NEWS_API_KEY") is None:
+    raise ValueError("NEWS_API_KEY is not set")
 
 # Used for Google Search API
 genai_client = Client(api_key=os.getenv("GEMINI_API_KEY"))
@@ -78,8 +81,24 @@ def generate_query(state: OverallState, config: RunnableConfig) -> QueryGenerati
     )
     # Generate the search queries
     result = structured_llm.invoke(formatted_prompt)
-    return {"search_query": result.query}
+    return {"query_list": result.query}
 
+def news_research(state: WebSearchState, config: RunnableConfig) -> OverallState:
+    results = news_search(NewsSearchInput(query=state["search_query"]))
+    summary_lines, sources = [], []
+    for idx, art in enumerate(results, 1):
+        summary_lines.append(
+            f"{idx}. **{art['title']}** ({art['published_at']}) — {art['snippet']} [↗]({art['url']})"
+        )
+        sources.append(
+            {"label": art["title"][:40], "short_url": f"[{idx}]", "value": art["url"]}
+        )
+
+    return {
+        "sources_gathered": sources,
+        "search_query": [state["search_query"]],
+        "web_research_result": ["\n".join(summary_lines)],
+    }
 
 def continue_to_web_research(state: QueryGenerationState):
     """LangGraph node that sends the search queries to the web research node.
@@ -88,9 +107,14 @@ def continue_to_web_research(state: QueryGenerationState):
     """
     return [
         Send("web_research", {"search_query": search_query, "id": int(idx)})
-        for idx, search_query in enumerate(state["search_query"])
+        for idx, search_query in enumerate(state["query_list"])
     ]
 
+def continue_to_news_research(state: QueryGenerationState):
+    return [
+        Send("news_research", {"search_query": q, "id": int(idx)})
+        for idx, q in enumerate(state["query_list"])
+    ]
 
 def web_research(state: WebSearchState, config: RunnableConfig) -> OverallState:
     """LangGraph node that performs web research using the native Google Search API tool.
@@ -153,7 +177,7 @@ def reflection(state: OverallState, config: RunnableConfig) -> ReflectionState:
     configurable = Configuration.from_runnable_config(config)
     # Increment the research loop count and get the reasoning model
     state["research_loop_count"] = state.get("research_loop_count", 0) + 1
-    reasoning_model = state.get("reasoning_model", configurable.reflection_model)
+    reasoning_model = state.get("reasoning_model") or configurable.reasoning_model
 
     # Format the prompt
     current_date = get_current_date()
@@ -170,7 +194,6 @@ def reflection(state: OverallState, config: RunnableConfig) -> ReflectionState:
         api_key=os.getenv("GEMINI_API_KEY"),
     )
     result = llm.with_structured_output(Reflection).invoke(formatted_prompt)
-
     return {
         "is_sufficient": result.is_sufficient,
         "knowledge_gap": result.knowledge_gap,
@@ -197,23 +220,23 @@ def evaluate_research(
         String literal indicating the next node to visit ("web_research" or "finalize_summary")
     """
     configurable = Configuration.from_runnable_config(config)
-    max_research_loops = (
+    max_loops = (
         state.get("max_research_loops")
         if state.get("max_research_loops") is not None
         else configurable.max_research_loops
     )
-    if state["is_sufficient"] or state["research_loop_count"] >= max_research_loops:
+    if state["is_sufficient"] or state["research_loop_count"] >= max_loops:
         return "finalize_answer"
     else:
         return [
             Send(
-                "web_research",
+                "news_research",
                 {
-                    "search_query": follow_up_query,
+                    "search_query": q,
                     "id": state["number_of_ran_queries"] + int(idx),
                 },
             )
-            for idx, follow_up_query in enumerate(state["follow_up_queries"])
+            for idx, q in enumerate(state["follow_up_queries"])
         ]
 
 
@@ -270,7 +293,7 @@ builder = StateGraph(OverallState, config_schema=Configuration)
 
 # Define the nodes we will cycle between
 builder.add_node("generate_query", generate_query)
-builder.add_node("web_research", web_research)
+builder.add_node("news_research", news_research) 
 builder.add_node("reflection", reflection)
 builder.add_node("finalize_answer", finalize_answer)
 
@@ -279,15 +302,15 @@ builder.add_node("finalize_answer", finalize_answer)
 builder.add_edge(START, "generate_query")
 # Add conditional edge to continue with search queries in a parallel branch
 builder.add_conditional_edges(
-    "generate_query", continue_to_web_research, ["web_research"]
+    "generate_query", continue_to_news_research, ["news_research"]
 )
 # Reflect on the web research
-builder.add_edge("web_research", "reflection")
+builder.add_edge("news_research", "reflection")
 # Evaluate the research
-builder.add_conditional_edges(
-    "reflection", evaluate_research, ["web_research", "finalize_answer"]
+builder.add_conditional_edges(                
+    "reflection", evaluate_research, ["news_research", "finalize_answer"]
 )
 # Finalize the answer
 builder.add_edge("finalize_answer", END)
 
-graph = builder.compile(name="pro-search-agent")
+graph = builder.compile(name="news-search-agent")
