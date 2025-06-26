@@ -1,5 +1,5 @@
 import os
-
+import re, uuid
 from agent.tools_and_schemas import SearchQueryList, Reflection, NewsSearchInput, news_search
 from dotenv import load_dotenv
 from langchain_core.messages import AIMessage
@@ -41,7 +41,7 @@ if os.getenv("NEWS_API_KEY") is None:
 
 # Used for Google Search API
 genai_client = Client(api_key=os.getenv("GEMINI_API_KEY"))
-
+URL_RE = re.compile(r"https?://\S+")
 
 # Nodes
 def generate_query(state: OverallState, config: RunnableConfig) -> QueryGenerationState:
@@ -83,15 +83,25 @@ def generate_query(state: OverallState, config: RunnableConfig) -> QueryGenerati
     result = structured_llm.invoke(formatted_prompt)
     return {"query_list": result.query}
 
+def clean_snippet(text: str) -> str:
+    return URL_RE.sub("", text or "").replace("..", ".").strip(" .")
+
 def news_research(state: WebSearchState, config: RunnableConfig) -> OverallState:
     results = news_search(NewsSearchInput(query=state["search_query"]))
+
     summary_lines, sources = [], []
     for idx, art in enumerate(results, 1):
+        short_url = f"news-{uuid.uuid4().hex[:8]}"
         summary_lines.append(
-            f"{idx}. **{art['title']}** ({art['published_at']}) — {art['snippet']} [↗]({art['url']})"
+            f"{idx}. **{art['title']}** ({art['published_at']}) — "
+            f"{clean_snippet(art['snippet'])} [{idx}]({short_url})"
         )
         sources.append(
-            {"label": art["title"][:40], "short_url": f"[{idx}]", "value": art["url"]}
+            {
+                "label": art["title"][:40] or f"source {idx}",
+                "short_url": short_url,
+                "value": art["url"],
+            }
         )
 
     return {
@@ -314,3 +324,4 @@ builder.add_conditional_edges(
 builder.add_edge("finalize_answer", END)
 
 graph = builder.compile(name="news-search-agent")
+
