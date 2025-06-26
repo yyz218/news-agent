@@ -87,20 +87,30 @@ def clean_snippet(text: str) -> str:
     return URL_RE.sub("", text or "").replace("..", ".").strip(" .")
 
 def news_research(state: WebSearchState, config: RunnableConfig) -> OverallState:
-    results = news_search(NewsSearchInput(query=state["search_query"]))
+    raw_results = news_search(NewsSearchInput(query=state["search_query"]))
+
+    seen: set[str] = set()
+    deduped = []
+    for art in raw_results:
+        url = art["url"]
+        if url and url not in seen:
+            seen.add(url)
+            deduped.append(art)
 
     summary_lines, sources = [], []
-    for idx, art in enumerate(results, 1):
+    for idx, art in enumerate(deduped, 1):
         short_url = f"news-{uuid.uuid4().hex[:8]}"
         summary_lines.append(
             f"{idx}. **{art['title']}** ({art['published_at']}) — "
-            f"{clean_snippet(art['snippet'])} [↗]({short_url})"
+            f"{art['snippet']} [↗]({short_url})"
         )
         sources.append(
             {
                 "label": art["title"][:40] or f"source {idx}",
                 "short_url": short_url,
                 "value": art["url"],
+                "image_url": art["image_url"],
+                "video_url": art["video_url"],
             }
         )
 
@@ -293,7 +303,7 @@ def finalize_answer(state: OverallState, config: RunnableConfig):
             unique_sources.append(source)
 
     return {
-        "messages": [AIMessage(content=result.content)],
+        "messages": [AIMessage(content=result.content, additional_kwargs={"sources": unique_sources},)],
         "sources_gathered": unique_sources,
     }
 

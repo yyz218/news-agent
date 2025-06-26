@@ -2,6 +2,7 @@ from typing import List, Dict, Any
 from pydantic import BaseModel, Field
 import datetime, os, requests
 from newsapi import NewsApiClient
+import re
 
 class SearchQueryList(BaseModel):
     query: List[str] = Field(
@@ -33,6 +34,10 @@ class NewsSearchInput(BaseModel):
     )
     language: str = Field(default="en", description="ISO 639-1")
 
+def extract_video(article: dict) -> str | None:
+    yt_match = re.search(r"(https?://www\.youtube\.com/watch\?v=[\w-]+)", article.get("content",""))
+    return yt_match.group(1) if yt_match else None
+
 def news_search(params: NewsSearchInput) -> List[Dict[str, Any]]:
     api_key = os.getenv("NEWS_API_KEY")
     if not api_key:
@@ -62,6 +67,8 @@ def news_search(params: NewsSearchInput) -> List[Dict[str, Any]]:
                 "snippet":      art.get("description") or (art.get("content") or "")[:160],
                 "url":          art.get("url", ""),
                 "published_at": (art.get("publishedAt") or "")[:10],
+                "image_url": art.get("urlToImage", ""), 
+                "video_url": extract_video(art), 
             }
         )
     return results

@@ -8,6 +8,7 @@ import { useState, ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import ReactPlayer from "react-player";
 import {
   ActivityTimeline,
   ProcessedEvent,
@@ -18,6 +19,43 @@ type MdComponentProps = {
   className?: string;
   children?: ReactNode;
   [key: string]: any;
+};
+
+interface SourceItem {
+  short_url: string;
+  value: string;
+  image_url?: string;
+  video_url?: string;
+  label?: string;
+}
+
+const RichSource: React.FC<{ src: SourceItem }> = ({ src }) => {
+  if (src.video_url) {
+    return (
+      <div className="my-2">
+        <ReactPlayer
+          url={src.video_url}
+          width="100%"
+          height="240px"
+          controls
+          className="rounded-lg overflow-hidden"
+        />
+      </div>
+    );
+  }
+  if (src.image_url) {
+    return (
+      <a href={src.value} target="_blank" rel="noreferrer" className="my-2 block">
+        <img
+          src={src.image_url}
+          alt={src.label ?? "news image"}
+          loading="lazy"
+          className="max-h-52 w-full object-cover rounded-lg shadow"
+        />
+      </a>
+    );
+  }
+  return null;
 };
 
 // Markdown components (from former ReportView.tsx)
@@ -185,6 +223,7 @@ const AiMessageBubble: React.FC<AiMessageBubbleProps> = ({
   const activityForThisBubble =
     isLastMessage && isOverallLoading ? liveActivity : historicalActivity;
   const isLiveActivityForThisBubble = isLastMessage && isOverallLoading;
+  const sources: SourceItem[] = (message as any).additional_kwargs?.sources ?? [];
 
   return (
     <div className={`relative break-words flex flex-col`}>
@@ -201,6 +240,7 @@ const AiMessageBubble: React.FC<AiMessageBubbleProps> = ({
           ? message.content
           : JSON.stringify(message.content)}
       </ReactMarkdown>
+      {sources.map((s, i) => (<RichSource key={i} src={s} />))}
       <Button
         variant="default"
         className={`cursor-pointer bg-neutral-700 border-neutral-600 text-neutral-300 self-end ${
