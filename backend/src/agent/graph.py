@@ -94,7 +94,7 @@ def news_research(state: WebSearchState, config: RunnableConfig) -> OverallState
         short_url = f"news-{uuid.uuid4().hex[:8]}"
         summary_lines.append(
             f"{idx}. **{art['title']}** ({art['published_at']}) — "
-            f"{clean_snippet(art['snippet'])} [{idx}]({short_url})"
+            f"{clean_snippet(art['snippet'])} [↗]({short_url})"
         )
         sources.append(
             {
